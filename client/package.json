@@ -1,0 +1,23 @@
+{
+  "name": "soap-oauth-client",
+  "version": "1.0.0",
+  "private": true,
+  "description": "End-to-end demo client: obtains an OAuth 2.0 token from authentik and calls the SOAP gateway over both token transports",
+  "type": "module",
+  "engines": {
+    "node": ">=20.11"
+  },
+  "scripts": {
+    "demo": "tsx src/demo.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.7",
+    "soap": "^1.1.5"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}

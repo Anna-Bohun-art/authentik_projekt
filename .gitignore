@@ -1,0 +1,20 @@
+# dependencies / build output
+node_modules/
+dist/
+*.tsbuildinfo
+
+# secrets & local env
+.env
+*.local
+
+# authentik runtime data
+authentik/media/*
+authentik/certs/*
+!authentik/media/.gitkeep
+!authentik/certs/.gitkeep
+
+# logs / editor / OS
+*.log
+.DS_Store
+.vscode/
+.idea/

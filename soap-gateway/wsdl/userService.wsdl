@@ -1,0 +1,193 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<wsdl:definitions xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/"
+                  xmlns:soap="http://schemas.xmlsoap.org/wsdl/soap/"
+                  xmlns:xsd="http://www.w3.org/2001/XMLSchema"
+                  xmlns:tns="urn:authentik:soap:userservice"
+                  xmlns:wsse="http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-secext-1.0.xsd"
+                  targetNamespace="urn:authentik:soap:userservice"
+                  name="UserService">
+
+  <wsdl:documentation>
+    Demo SOAP service secured with OAuth 2.0. Every operation requires a valid
+    access token issued by the configured authentik OAuth2 provider. The token
+    may be presented either as an HTTP "Authorization: Bearer" header or inside
+    a WS-Security &lt;wsse:Security&gt; BinarySecurityToken. Operation-level
+    scopes: user.read for reads, user.write for DeactivateUser.
+  </wsdl:documentation>
+
+  <wsdl:types>
+    <xsd:schema targetNamespace="urn:authentik:soap:userservice"
+                elementFormDefault="qualified">
+
+      <xsd:element name="GetUserDisplayName">
+        <xsd:complexType>
+          <xsd:sequence>
+            <xsd:element name="username" type="xsd:string"/>
+          </xsd:sequence>
+        </xsd:complexType>
+      </xsd:element>
+      <xsd:element name="GetUserDisplayNameResponse">
+        <xsd:complexType>
+          <xsd:sequence>
+            <xsd:element name="displayName" type="xsd:string"/>
+          </xsd:sequence>
+        </xsd:complexType>
+      </xsd:element>
+
+      <xsd:element name="ListGroups">
+        <xsd:complexType>
+          <xsd:sequence>
+            <xsd:element name="username" type="xsd:string"/>
+          </xsd:sequence>
+        </xsd:complexType>
+      </xsd:element>
+      <xsd:element name="ListGroupsResponse">
+        <xsd:complexType>
+          <xsd:sequence>
+            <xsd:element name="group" type="xsd:string" minOccurs="0" maxOccurs="unbounded"/>
+          </xsd:sequence>
+        </xsd:complexType>
+      </xsd:element>
+
+      <xsd:element name="DeactivateUser">
+        <xsd:complexType>
+          <xsd:sequence>
+            <xsd:element name="username" type="xsd:string"/>
+          </xsd:sequence>
+        </xsd:complexType>
+      </xsd:element>
+      <xsd:element name="DeactivateUserResponse">
+        <xsd:complexType>
+          <xsd:sequence>
+            <xsd:element name="status" type="xsd:string"/>
+            <xsd:element name="performedBy" type="xsd:string"/>
+          </xsd:sequence>
+        </xsd:complexType>
+      </xsd:element>
+
+      <xsd:element name="ServiceFault">
+        <xsd:complexType>
+          <xsd:sequence>
+            <xsd:element name="code" type="xsd:string"/>
+            <xsd:element name="message" type="xsd:string"/>
+          </xsd:sequence>
+        </xsd:complexType>
+      </xsd:element>
+    </xsd:schema>
+
+    <xsd:schema targetNamespace="http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-secext-1.0.xsd"
+                elementFormDefault="qualified">
+      <xsd:complexType name="BinarySecurityTokenType">
+        <xsd:simpleContent>
+          <xsd:extension base="xsd:string">
+            <xsd:attribute name="ValueType" type="xsd:anyURI" use="optional"/>
+            <xsd:attribute name="EncodingType" type="xsd:anyURI" use="optional"/>
+          </xsd:extension>
+        </xsd:simpleContent>
+      </xsd:complexType>
+      <xsd:element name="Security">
+        <xsd:complexType>
+          <xsd:sequence>
+            <xsd:element name="BinarySecurityToken" type="wsse:BinarySecurityTokenType" minOccurs="0"/>
+          </xsd:sequence>
+        </xsd:complexType>
+      </xsd:element>
+    </xsd:schema>
+  </wsdl:types>
+
+  <wsdl:message name="GetUserDisplayNameRequest">
+    <wsdl:part name="parameters" element="tns:GetUserDisplayName"/>
+  </wsdl:message>
+  <wsdl:message name="GetUserDisplayNameResponse">
+    <wsdl:part name="parameters" element="tns:GetUserDisplayNameResponse"/>
+  </wsdl:message>
+  <wsdl:message name="ListGroupsRequest">
+    <wsdl:part name="parameters" element="tns:ListGroups"/>
+  </wsdl:message>
+  <wsdl:message name="ListGroupsResponse">
+    <wsdl:part name="parameters" element="tns:ListGroupsResponse"/>
+  </wsdl:message>
+  <wsdl:message name="DeactivateUserRequest">
+    <wsdl:part name="parameters" element="tns:DeactivateUser"/>
+  </wsdl:message>
+  <wsdl:message name="DeactivateUserResponse">
+    <wsdl:part name="parameters" element="tns:DeactivateUserResponse"/>
+  </wsdl:message>
+  <wsdl:message name="ServiceFaultMessage">
+    <wsdl:part name="fault" element="tns:ServiceFault"/>
+  </wsdl:message>
+  <wsdl:message name="SecurityHeader">
+    <wsdl:part name="security" element="wsse:Security"/>
+  </wsdl:message>
+
+  <wsdl:portType name="UserServicePortType">
+    <wsdl:operation name="GetUserDisplayName">
+      <wsdl:input message="tns:GetUserDisplayNameRequest"/>
+      <wsdl:output message="tns:GetUserDisplayNameResponse"/>
+      <wsdl:fault name="ServiceFault" message="tns:ServiceFaultMessage"/>
+    </wsdl:operation>
+    <wsdl:operation name="ListGroups">
+      <wsdl:input message="tns:ListGroupsRequest"/>
+      <wsdl:output message="tns:ListGroupsResponse"/>
+      <wsdl:fault name="ServiceFault" message="tns:ServiceFaultMessage"/>
+    </wsdl:operation>
+    <wsdl:operation name="DeactivateUser">
+      <wsdl:input message="tns:DeactivateUserRequest"/>
+      <wsdl:output message="tns:DeactivateUserResponse"/>
+      <wsdl:fault name="ServiceFault" message="tns:ServiceFaultMessage"/>
+    </wsdl:operation>
+  </wsdl:portType>
+
+  <wsdl:binding name="UserServiceBinding" type="tns:UserServicePortType">
+    <soap:binding style="document" transport="http://schemas.xmlsoap.org/soap/http"/>
+
+    <wsdl:operation name="GetUserDisplayName">
+      <soap:operation soapAction="urn:authentik:soap:userservice/GetUserDisplayName"/>
+      <wsdl:input>
+        <soap:header message="tns:SecurityHeader" part="security" use="literal"/>
+        <soap:body use="literal"/>
+      </wsdl:input>
+      <wsdl:output>
+        <soap:body use="literal"/>
+      </wsdl:output>
+      <wsdl:fault name="ServiceFault">
+        <soap:fault name="ServiceFault" use="literal"/>
+      </wsdl:fault>
+    </wsdl:operation>
+
+    <wsdl:operation name="ListGroups">
+      <soap:operation soapAction="urn:authentik:soap:userservice/ListGroups"/>
+      <wsdl:input>
+        <soap:header message="tns:SecurityHeader" part="security" use="literal"/>
+        <soap:body use="literal"/>
+      </wsdl:input>
+      <wsdl:output>
+        <soap:body use="literal"/>
+      </wsdl:output>
+      <wsdl:fault name="ServiceFault">
+        <soap:fault name="ServiceFault" use="literal"/>
+      </wsdl:fault>
+    </wsdl:operation>
+
+    <wsdl:operation name="DeactivateUser">
+      <soap:operation soapAction="urn:authentik:soap:userservice/DeactivateUser"/>
+      <wsdl:input>
+        <soap:header message="tns:SecurityHeader" part="security" use="literal"/>
+        <soap:body use="literal"/>
+      </wsdl:input>
+      <wsdl:output>
+        <soap:body use="literal"/>
+      </wsdl:output>
+      <wsdl:fault name="ServiceFault">
+        <soap:fault name="ServiceFault" use="literal"/>
+      </wsdl:fault>
+    </wsdl:operation>
+  </wsdl:binding>
+
+  <wsdl:service name="UserService">
+    <wsdl:documentation>OAuth 2.0 protected user-directory SOAP service.</wsdl:documentation>
+    <wsdl:port name="UserServicePort" binding="tns:UserServiceBinding">
+      <soap:address location="http://localhost:8000/soap"/>
+    </wsdl:port>
+  </wsdl:service>
+</wsdl:definitions>

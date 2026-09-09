@@ -1,0 +1,121 @@
+# One-command stack:  docker compose up -d --build
+#
+#   authentik-server / worker  ->  OAuth 2.0 / OIDC Identity Provider
+#   postgresql                 ->  authentik's DB + a separate "soapdemo" DB
+#   redis                      ->  authentik cache/queue
+#   soap-gateway               ->  the OAuth-2.0-protected SOAP service
+#
+# Secrets come from a .env file next to this one (see .env.example).
+
+services:
+  postgresql:
+    image: postgres:15-alpine
+    container_name: authentik-postgresql
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${PG_USER:-authentik}
+      POSTGRES_PASSWORD: ${PG_PASS:?set PG_PASS in .env}
+      POSTGRES_DB: ${PG_DB:-authentik}
+    volumes:
+      - database:/var/lib/postgresql/data
+      # Creates the "soapdemo" database + seed data on first start.
+      - ./db:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${PG_USER:-authentik}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:alpine
+    container_name: authentik-redis
+    restart: unless-stopped
+    volumes:
+      - redis:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  server:
+    image: ghcr.io/goauthentik/server:2024.8
+    container_name: authentik-server
+    restart: unless-stopped
+    command: server
+    ports:
+      - "9000:9000"
+      - "9443:9443"
+    environment:
+      AUTHENTIK_SECRET_KEY: ${AUTHENTIK_SECRET_KEY:?set AUTHENTIK_SECRET_KEY in .env}
+      AUTHENTIK_POSTGRESQL__HOST: postgresql
+      AUTHENTIK_POSTGRESQL__NAME: ${PG_DB:-authentik}
+      AUTHENTIK_POSTGRESQL__USER: ${PG_USER:-authentik}
+      AUTHENTIK_POSTGRESQL__PASSWORD: ${PG_PASS}
+      AUTHENTIK_REDIS__HOST: redis
+      # Bootstraps the initial akadmin user on first run.
+      AUTHENTIK_BOOTSTRAP_PASSWORD: ${AUTHENTIK_BOOTSTRAP_PASSWORD:?set in .env}
+      AUTHENTIK_BOOTSTRAP_TOKEN: ${AUTHENTIK_BOOTSTRAP_TOKEN:?set in .env}
+    depends_on:
+      postgresql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - media:/media
+      - certs:/certs
+
+  worker:
+    image: ghcr.io/goauthentik/server:2024.8
+    container_name: authentik-worker
+    restart: unless-stopped
+    command: worker
+    environment:
+      AUTHENTIK_SECRET_KEY: ${AUTHENTIK_SECRET_KEY}
+      AUTHENTIK_POSTGRESQL__HOST: postgresql
+      AUTHENTIK_POSTGRESQL__NAME: ${PG_DB:-authentik}
+      AUTHENTIK_POSTGRESQL__USER: ${PG_USER:-authentik}
+      AUTHENTIK_POSTGRESQL__PASSWORD: ${PG_PASS}
+      AUTHENTIK_REDIS__HOST: redis
+    depends_on:
+      postgresql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - media:/media
+      - certs:/certs
+
+  soap-gateway:
+    build: ./soap-gateway
+    container_name: soap-gateway
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      GATEWAY_PORT: 8000
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      # `iss` in tokens is minted from the host the client used (localhost:9000);
+      # the gateway fetches the JWKS over the docker host bridge.
+      OIDC_ISSUER: http://localhost:9000/application/o/soap-gateway/
+      OIDC_JWKS_URI: http://host.docker.internal:9000/application/o/soap-gateway/jwks/
+      OIDC_AUDIENCE: soap-gateway
+      USER_DIRECTORY: postgres
+      PGHOST: postgresql
+      PGPORT: 5432
+      PGUSER: ${PG_USER:-authentik}
+      PGPASSWORD: ${PG_PASS}
+      PGDATABASE: soapdemo
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      postgresql:
+        condition: service_healthy
+      server:
+        condition: service_started
+
+volumes:
+  database:
+  redis:
+  media:
+  certs:
