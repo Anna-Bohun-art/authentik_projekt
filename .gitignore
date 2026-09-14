@@ -13,8 +13,13 @@ authentik/certs/*
 !authentik/media/.gitkeep
 !authentik/certs/.gitkeep
 
+# local dev tools (may hold a client secret in browser localStorage)
+test-console.html
+
 # logs / editor / OS
 *.log
 .DS_Store
 .vscode/
 .idea/
+
+Claude outputs/

@@ -12,11 +12,11 @@ const Schema = z.object({
   // OAuth2 provider that fronts this service (see docs/authentik-setup.md).
   // The defaults let `npm run dev` start with no .env; they are only actually
   // contacted when a request presents a token to verify.
-  OIDC_ISSUER: z.string().url().default('http://localhost:9000/application/o/soap-gateway/'),
+  OIDC_ISSUER: z.string().url().default('http://localhost:9001/application/o/soap-gateway/'),
   OIDC_JWKS_URI: z
     .string()
     .url()
-    .default('http://localhost:9000/application/o/soap-gateway/jwks/'),
+    .default('http://localhost:9001/application/o/soap-gateway/jwks/'),
   OIDC_AUDIENCE: z.string().min(1).default('soap-gateway'),
 
   // Where the demo user directory lives. "memory" needs no database; it is the
@@ -31,6 +31,11 @@ const Schema = z.object({
   LOG_LEVEL: z
     .enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent'])
     .default('info'),
+
+  // Off by default: this is a same-origin SOAP service. Flip on only for local
+  // testing from a browser page (e.g. a hand-written test console) that calls
+  // this gateway with fetch() from a different origin.
+  ENABLE_CORS: z.coerce.boolean().default(false),
 });
 
 export type AppConfig = z.infer<typeof Schema>;

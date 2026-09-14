@@ -15,7 +15,7 @@ import { JwtWSSecurity } from './jwtWsSecurity.js';
  */
 const cfg = {
   tokenEndpoint:
-    process.env.TOKEN_ENDPOINT ?? 'http://localhost:9000/application/o/token/',
+    process.env.TOKEN_ENDPOINT ?? 'http://localhost:9001/application/o/token/',
   clientId: process.env.CLIENT_ID ?? 'soap-gateway',
   clientSecret: required('CLIENT_SECRET'),
   wsdl: process.env.GATEWAY_WSDL ?? 'http://localhost:8000/soap?wsdl',

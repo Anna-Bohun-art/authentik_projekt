@@ -2,12 +2,12 @@
  * Registers this project's OAuth2 provider + application + scopes in a running
  * authentik, using the admin flow API (no manual clicking).
  *
- *   AK_URL=http://localhost:9000 AK_USER=akadmin AK_PASS=... \
+ *   AK_URL=http://localhost:9001 AK_USER=akadmin AK_PASS=... \
  *     tsx scripts/provision-authentik.ts
  *
  * Prints the client_id / client_secret and the issuer / JWKS / token URLs.
  */
-const AK = (process.env.AK_URL ?? 'http://localhost:9000').replace(/\/$/, '');
+const AK = (process.env.AK_URL ?? 'http://localhost:9001').replace(/\/$/, '');
 const USER = process.env.AK_USER ?? 'akadmin';
 const PASS = process.env.AK_PASS ?? '';
 const TOKEN = process.env.AK_TOKEN ?? '';

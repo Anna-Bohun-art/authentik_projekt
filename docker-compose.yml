@@ -44,8 +44,8 @@ services:
     restart: unless-stopped
     command: server
     ports:
-      - "9000:9000"
-      - "9443:9443"
+      - "9001:9000"
+      - "9444:9443"
     environment:
       AUTHENTIK_SECRET_KEY: ${AUTHENTIK_SECRET_KEY:?set AUTHENTIK_SECRET_KEY in .env}
       AUTHENTIK_POSTGRESQL__HOST: postgresql
@@ -95,10 +95,11 @@ services:
     environment:
       GATEWAY_PORT: 8000
       LOG_LEVEL: ${LOG_LEVEL:-info}
-      # `iss` in tokens is minted from the host the client used (localhost:9000);
+      ENABLE_CORS: "true"
+      # `iss` in tokens is minted from the host the client used (localhost:9001);
       # the gateway fetches the JWKS over the docker host bridge.
-      OIDC_ISSUER: http://localhost:9000/application/o/soap-gateway/
-      OIDC_JWKS_URI: http://host.docker.internal:9000/application/o/soap-gateway/jwks/
+      OIDC_ISSUER: http://localhost:9001/application/o/soap-gateway/
+      OIDC_JWKS_URI: http://host.docker.internal:9001/application/o/soap-gateway/jwks/
       OIDC_AUDIENCE: soap-gateway
       USER_DIRECTORY: postgres
       PGHOST: postgresql

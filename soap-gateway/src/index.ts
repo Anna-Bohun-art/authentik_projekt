@@ -61,6 +61,34 @@ const soapServer = soap.listen(httpServer, {
   // Deterministic parsing of the inbound <wsse:Security> header.
   attributesKey: 'attributes',
   valueKey: '$value',
+  // Fires once `soap.listen()` has installed its own 'request' listener on
+  // httpServer (replacing the base handler above). CORS wrapping has to
+  // happen *after* that swap — doing it synchronously right after
+  // `soap.listen()` returns races the library's async wsdl.onReady() and
+  // ends up wrapping the pre-swap (SOAP-less) listener instead.
+  callback: () => {
+    if (!config.ENABLE_CORS) return;
+    const soapDispatcher = httpServer.listeners('request').slice();
+    httpServer.removeAllListeners('request');
+    httpServer.addListener('request', (req, res) => {
+      if (req.headers.origin) {
+        // Reflect the origin (rather than "*") so this still works if a
+        // browser ever sends credentials; fine for a local test console,
+        // not for prod.
+        res.setHeader('Access-Control-Allow-Origin', req.headers.origin);
+        res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+        res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, SOAPAction');
+        res.setHeader('Vary', 'Origin');
+      }
+      if (req.method === 'OPTIONS') {
+        res.writeHead(204);
+        res.end();
+        return;
+      }
+      for (const listener of soapDispatcher) listener.call(httpServer, req, res);
+    });
+    log.info('CORS enabled for local testing');
+  },
 });
 soapServer.log = (type, data) => {
   if (type === 'received' || type === 'replied') log.debug({ type }, 'soap traffic');

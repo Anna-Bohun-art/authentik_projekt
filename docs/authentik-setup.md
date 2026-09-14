@@ -1,7 +1,7 @@
 # Configuring authentik as the OAuth 2.0 provider
 
 One-time setup after `docker compose up -d`. Everything here is done in the
-authentik admin UI at <http://localhost:9000/if/admin/> (log in as `akadmin`
+authentik admin UI at <http://localhost:9001/if/admin/> (log in as `akadmin`
 with the `AUTHENTIK_BOOTSTRAP_PASSWORD` from your `.env`).
 
 ## 1. Custom scopes
@@ -29,7 +29,7 @@ granted and land in the token).
 - **Signing Key:** the default `authentik Self-signed Certificate` (RS256)
 - **Scopes:** add `user.read`, `user.write`, plus the default `openid`
 - **Subject mode / issuer:** leave defaults. Issuer will be
-  `http://localhost:9000/application/o/soap-gateway/` — matches `OIDC_ISSUER`.
+  `http://localhost:9001/application/o/soap-gateway/` — matches `OIDC_ISSUER`.
 
 ## 3. Application
 
@@ -37,7 +37,7 @@ granted and land in the token).
 
 - **Name:** `SOAP Gateway`
 - **Slug:** `soap-gateway`  ← the slug is what makes the discovery URL
-  `http://localhost:9000/application/o/soap-gateway/.well-known/openid-configuration`
+  `http://localhost:9001/application/o/soap-gateway/.well-known/openid-configuration`
 - **Provider:** `soap-gateway` (the one from step 2)
 
 ## 4. Machine-to-machine client (client_credentials)
@@ -67,7 +67,7 @@ cp client/.env.example client/.env
 
 ```bash
 # from the host
-curl -s -XPOST http://localhost:9000/application/o/token/ \
+curl -s -XPOST http://localhost:9001/application/o/token/ \
   -d grant_type=client_credentials \
   -d client_id=soap-gateway \
   -d client_secret=<secret> \
@@ -84,10 +84,10 @@ cd client && npm install && npm run demo
 
 ## Note on the JWKS URL inside Docker
 
-The demo client (on the host) gets tokens from `http://localhost:9000`, so the
-token `iss` is `http://localhost:9000/application/o/soap-gateway/`. The gateway
-container cannot reach `localhost:9000`, so `docker-compose.yml` points
-`OIDC_JWKS_URI` at `http://host.docker.internal:9000/...` while keeping
+The demo client (on the host) gets tokens from `http://localhost:9001`, so the
+token `iss` is `http://localhost:9001/application/o/soap-gateway/`. The gateway
+container cannot reach `localhost:9001`, so `docker-compose.yml` points
+`OIDC_JWKS_URI` at `http://host.docker.internal:9001/...` while keeping
 `OIDC_ISSUER` as the `localhost` value the token actually carries. If you run
 the gateway on the host instead (`cd soap-gateway && npm run dev`), set both to
 `localhost` (that is what `soap-gateway/.env.example` does).
