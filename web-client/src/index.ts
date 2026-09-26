@@ -86,7 +86,9 @@ function handleLogin(_req: IncomingMessage, res: ServerResponse): void {
   const { codeVerifier, codeChallenge } = createPkcePair();
   const state = randomState();
   createPendingAuthorization(state, codeVerifier);
-  const url = buildAuthorizationUrl(oidc, { state, codeChallenge, scope: 'openid user.read user.write' });
+  // `profile` is what makes authentik put preferred_username into the ID
+  // token; without it we only get the opaque `sub` hash.
+  const url = buildAuthorizationUrl(oidc, { state, codeChallenge, scope: 'openid profile user.read user.write' });
   redirect(res, url);
 }
 
@@ -147,13 +149,15 @@ function handleHome(req: IncomingMessage, res: ServerResponse): void {
     return;
   }
   const who = session.idClaims.preferred_username ?? session.idClaims.sub ?? 'unknown';
+  // `sid` is authentik's own session id — not useful to show, so leave it out.
+  const { sid: _authentikSid, ...shownClaims } = session.idClaims;
   html(
     res,
     200,
     layout(
       'SOAP demo — web client',
       `<p>Logged in as <code>${escapeHtml(who)}</code></p>
-       <pre>${escapeHtml(JSON.stringify(session.idClaims, null, 2))}</pre>
+       <pre>${escapeHtml(JSON.stringify(shownClaims, null, 2))}</pre>
        <a class="button" href="/call/read">Call GetUserDisplayName (user.read)</a>
        <a class="button" href="/call/write">Call DeactivateUser (user.write)</a>
        <a class="button" href="/logout">Log out</a>`,
@@ -167,7 +171,21 @@ async function handleCall(req: IncomingMessage, res: ServerResponse, kind: 'read
     redirect(res, '/login');
     return;
   }
-  const username = (session.idClaims.preferred_username as string | undefined) ?? 'alice';
+  // Act only on the logged-in user's own account. Never fall back to a fixed
+  // username: that would let one user operate on another's record.
+  const username = session.idClaims.preferred_username;
+  if (typeof username !== 'string' || !username) {
+    html(
+      res,
+      400,
+      layout(
+        'SOAP call not made',
+        `<p>The ID token has no <code>preferred_username</code> claim, so there is no username to call the service with.
+         Check that the provider grants the <code>profile</code> scope, then <a href="/logout">log out</a> and in again.</p>`,
+      ),
+    );
+    return;
+  }
   try {
     const client = await soap.createClientAsync(config.GATEWAY_WSDL, { endpoint: config.GATEWAY_ENDPOINT });
     client.setSecurity(new soap.BearerSecurity(session.accessToken));
