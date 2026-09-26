@@ -82,6 +82,43 @@ Then run the full demo:
 cd client && npm install && npm run demo
 ```
 
+## 7. Authorization Code + PKCE (browser login, `web-client/`)
+
+The M2M setup above is enough for `client/`. `web-client/` additionally logs a
+*human* in through authentik's own login page, so it needs two more things on
+the same `soap-gateway` provider:
+
+1. **Provider → Redirect URIs/Origins (RegEx):** add
+   `http://localhost:3000/callback` (strict, not a prefix match).
+2. **A real (non-service-account) user** to log in as — e.g.
+   **Directory → Users → Create**, username `alice`, set a password. Using
+   the same username as the SOAP demo data (`db/10-init-soapdemo.sh`) means
+   the token's `preferred_username` lines up with a user the service
+   directory actually knows about.
+
+Nothing else changes: it is the same `client_id`/`client_secret` from step 2,
+so tokens still carry `aud=soap-gateway` and the gateway's verification and
+per-operation scope checks (`src/auth/scopes.ts`) apply identically, whether
+the token came from `client_credentials` or from a browser login.
+
+```bash
+cd web-client
+cp .env.example .env    # paste the same CLIENT_SECRET as client/.env
+npm install
+npm run dev              # http://localhost:3000
+```
+
+Open `http://localhost:3000/login` — you land on authentik's real login page
+(not anything this repo renders), log in as `alice`, get redirected to
+`/callback` with a `code`, and land back on `/` with your own ID-token claims
+and buttons that call the SOAP gateway with *your* access token.
+
+If the provider's scope list restricts who can be granted `user.write` (see
+step 4's note on policies), a plain user without that grant will see the
+gateway's `insufficient_scope` fault on "Call DeactivateUser" — the same
+enforcement path as the M2M demo, just reached from a browser session instead
+of a service account.
+
 ## Note on the JWKS URL inside Docker
 
 The demo client (on the host) gets tokens from `http://localhost:9001`, so the

@@ -17,6 +17,7 @@ a modern token-based authorization stack.
 | Contract-first **SOAP** (WSDL 1.1 + XSD, document/literal, typed faults, SOAP header) | [`soap-gateway/wsdl/userService.wsdl`](soap-gateway/wsdl/userService.wsdl) |
 | **OAuth 2.0** resource server — offline JWT validation against JWKS, `iss` / `aud` / `exp` checks | [`soap-gateway/src/auth/tokens.ts`](soap-gateway/src/auth/tokens.ts) |
 | **OIDC** IdP integration (authentik provider, discovery, `client_credentials` grant) | [`docs/authentik-setup.md`](docs/authentik-setup.md), [`client/src/getToken.ts`](client/src/getToken.ts) |
+| **Authorization Code + PKCE** — a human logging in through authentik, not a service account | [`web-client/src/index.ts`](web-client/src/index.ts), [`.../oidcClient.ts`](web-client/src/oidcClient.ts), [`.../pkce.ts`](web-client/src/pkce.ts) |
 | Fine-grained authorization — **per-operation scopes** (`user.read` / `user.write`) | [`soap-gateway/src/auth/scopes.ts`](soap-gateway/src/auth/scopes.ts), [`.../soap/handlers.ts`](soap-gateway/src/soap/handlers.ts) |
 | **WS-Security** — token transported in `BinarySecurityToken` for ESB/legacy interop | [`soap-gateway/src/auth/wsSecurity.ts`](soap-gateway/src/auth/wsSecurity.ts) |
 | Middleware / gateway pattern (auth in front of a downstream capability) | [`soap-gateway/src/index.ts`](soap-gateway/src/index.ts) |
@@ -66,6 +67,23 @@ The demo obtains a token via `client_credentials`, then calls the service with
 the token on the HTTP header, again via WS-Security, and shows a `user.read`
 token being refused for `DeactivateUser`.
 
+### Log in as a human instead (Authorization Code + PKCE)
+
+`client/` above is machine-to-machine — no person involved. `web-client/`
+adds the flow that does involve one: a real browser redirect to authentik's
+login page, then the app calls the SOAP gateway with *your* access token.
+
+```bash
+cd web-client
+cp .env.example .env    # paste the same CLIENT_SECRET as client/.env
+npm install
+npm run dev              # then open http://localhost:3000/login
+```
+
+One-time setup for this flow (redirect URI + a normal user account, since
+`client/`'s setup only covers the service-account grant): step 7 in
+[`docs/authentik-setup.md`](docs/authentik-setup.md).
+
 ### Run the gateway without Docker
 
 ```bash
@@ -104,6 +122,7 @@ authentik_projekte/
 │   │   ├── config.ts logger.ts index.ts
 │   └── test/
 ├── client/                     end-to-end demo (client_credentials -> SOAP calls)
+├── web-client/                 browser login demo (Authorization Code + PKCE -> SOAP calls)
 └── docs/                       architecture + authentik setup
 ```
 

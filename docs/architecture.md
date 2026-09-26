@@ -4,8 +4,11 @@
 
 ```mermaid
 flowchart LR
-    client["SOAP client<br/>(client/)"]
+    browser["User's browser"]
+    webclient["web-client<br/>(Authorization Code + PKCE)"]
+    client["SOAP client<br/>(client/, client_credentials)"]
     subgraph idp["authentik (Identity Provider)"]
+      authz["/application/o/authorize/<br/>authorization endpoint"]
       token["/application/o/token/<br/>token endpoint"]
       jwks["/application/o/soap-gateway/jwks/<br/>JWKS (public keys)"]
     end
@@ -16,9 +19,12 @@ flowchart LR
     end
     db[("PostgreSQL<br/>soapdemo: app_user / app_group / user_group")]
 
-    client -- "1. client_credentials grant" --> token
-    token -- "access token (JWT)" --> client
-    client -- "2. SOAP request + token<br/>(HTTP Bearer or WS-Security)" --> soap
+    browser -- "1. log in" --> authz
+    browser -- "2. redirected here" --> webclient
+    webclient -- "3. exchange code for tokens" --> token
+    client -- "client_credentials grant" --> token
+    webclient -- "4. SOAP request + user's token" --> soap
+    client -- "SOAP request + service token<br/>(HTTP Bearer or WS-Security)" --> soap
     soap --> auth
     auth -- "fetch + cache signing keys" --> jwks
     auth -- "authorized" --> dir
@@ -26,9 +32,12 @@ flowchart LR
 ```
 
 The gateway is a **resource server** in OAuth 2.0 terms: it never handles
-credentials or runs a login UI, it only *consumes* access tokens that authentik
-issued. Token validation is local (offline) — the signing keys are fetched from
-the JWKS endpoint once and cached, so there is no per-request call to authentik.
+credentials or runs a login UI, it only *consumes* access tokens — whether
+they came from a service (`client/`, `client_credentials`) or from a human
+who just logged in through authentik's own page (`web-client/`, Authorization
+Code + PKCE). Token validation is local (offline) — the signing keys are
+fetched from the JWKS endpoint once and cached, so there is no per-request
+call to authentik.
 
 ## Sequence — token on the HTTP `Authorization` header (default)
 
@@ -47,6 +56,60 @@ sequenceDiagram
     G->>G: verify signature, iss, aud, exp; require scope "user.read"
     G-->>C: 200 SOAP: <GetUserDisplayNameResponse><displayName>…
 ```
+
+## Sequence — Authorization Code + PKCE (`web-client/`, a human logs in)
+
+The two sequences above are **client_credentials**: a service proves its own
+identity, no human involved. `web-client/` adds the other OAuth 2.0 grant this
+project demonstrates — a **browser** logging a **person** in, per RFC 6749
+§4.1 with the RFC 7636 PKCE extension:
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant U as User's browser
+    participant W as web-client (this app)
+    participant A as authentik
+    participant G as soap-gateway
+
+    U->>W: GET /login
+    W->>W: generate code_verifier (random)<br/>code_challenge = SHA256(code_verifier)<br/>state = random
+    W-->>U: 302 -> authentik /authorize?...&code_challenge&state
+    U->>A: GET /authorize (browser navigates)
+    A->>U: login page (username + password)
+    U->>A: submits credentials
+    A-->>U: 302 -> http://localhost:3000/callback?code=...&state=...
+    U->>W: GET /callback?code&state
+    W->>W: look up code_verifier by state (one-time use)
+    W->>A: POST /token  grant_type=authorization_code,<br/>code, code_verifier, client_id, client_secret
+    A->>A: check SHA256(code_verifier) == code_challenge from /authorize
+    A-->>W: 200 { access_token, id_token }
+    W->>W: verify id_token (JWKS, iss, aud=client_id)
+    W-->>U: 302 -> / (Set-Cookie: session)
+    U->>W: GET /call/read
+    W->>G: SOAP request, Authorization: Bearer <access_token>
+    G->>G: same verification as the M2M flow (iss/aud/exp, scope)
+    G-->>W: SOAP response
+    W-->>U: rendered result
+```
+
+Two things worth noticing against the client_credentials sequence:
+
+- **The password never reaches `web-client`.** It goes straight from the
+  browser to authentik's own login page; this app only ever sees a `code`,
+  then tokens.
+- **PKCE replaces "prove you're a confidential client" with "prove you're the
+  same party that started this login."** `code_verifier` is generated fresh
+  per login and never leaves the server; only its hash (`code_challenge`)
+  goes out in the (unauthenticated, redirectable) `/authorize` request. Even
+  though this provider is confidential (has a `client_secret` too), using
+  PKCE on top is current best practice (OAuth 2.1) precisely because the
+  authorization step happens in a browser, where a redirect URI or the code
+  itself is more exposed than a token-endpoint request from a backend.
+- **The resource server (`soap-gateway`) cannot tell the difference.** Same
+  JWKS check, same `iss`/`aud`/`exp`, same per-operation scope enforcement —
+  which is the point of the resource-server pattern: it only trusts
+  authentik's signature, not how the caller authenticated to get the token.
 
 ## Sequence — token inside the SOAP envelope (WS-Security)
 

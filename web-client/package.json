@@ -1,0 +1,27 @@
+{
+  "name": "web-client",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Browser-facing OAuth 2.0 client: Authorization Code + PKCE login against authentik, then calls the SOAP gateway with the logged-in user's own access token",
+  "type": "module",
+  "engines": {
+    "node": ">=20.11"
+  },
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.7",
+    "jose": "^5.9.6",
+    "soap": "^1.1.5",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}
