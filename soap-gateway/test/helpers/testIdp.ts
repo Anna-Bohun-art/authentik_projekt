@@ -11,6 +11,8 @@ export interface IssueTokenOptions {
   subject?: string;
   expiresInSeconds?: number;
   expired?: boolean;
+  /** Mint a token shaped like an authentik ID token: no `azp` claim. */
+  asIdToken?: boolean;
 }
 
 export interface TestIdp {
@@ -58,6 +60,7 @@ export async function startTestIdp(): Promise<TestIdp> {
       return new SignJWT({
         scope: options.scope ?? 'user.read',
         preferred_username: options.subject ?? 'svc-demo',
+        ...(options.asIdToken ? {} : { azp: 'soap-gateway' }),
       })
         .setProtectedHeader({ alg: 'RS256', kid: KID })
         .setIssuer(options.issuer ?? issuer)

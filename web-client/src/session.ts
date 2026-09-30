@@ -9,9 +9,14 @@ import { randomBytes } from 'node:crypto';
  *    that only ever leaves this server as an HttpOnly cookie, never the
  *    token itself.
  *
+ * Both only shrink on a matching read, so `sweepExpired` is run on a timer
+ * (see index.ts) to drop logins that were never completed and sessions whose
+ * owner never came back.
+ *
  * A real deployment would put these in Redis (or sign/encrypt them into the
- * cookie) so they survive a restart and work across multiple instances.
- * That is infrastructure, not OAuth, so it is deliberately out of scope here.
+ * cookie) so they survive a restart and work across multiple instances, and
+ * let Redis expire them via TTL. That is infrastructure, not OAuth, so it is
+ * deliberately out of scope here.
  */
 
 export interface Session {
@@ -32,7 +37,9 @@ export function getSession(id: string | undefined): Session | undefined {
   if (!id) return undefined;
   const session = sessions.get(id);
   if (!session) return undefined;
-  if (Date.now() >= session.expiresAt) {
+  // Written as !(now < expiresAt) so a NaN expiresAt counts as expired: the
+  // `now >= NaN` form is always false and would keep the session forever.
+  if (!(Date.now() < session.expiresAt)) {
     sessions.delete(id);
     return undefined;
   }
@@ -63,4 +70,24 @@ export function consumePendingAuthorization(state: string | undefined): string |
   pending.delete(state);
   if (!entry || Date.now() - entry.createdAt > PENDING_TTL_MS) return undefined;
   return entry.codeVerifier;
+}
+
+/** Drops every expired session and every pending login older than its TTL.
+ * Returns how many of each were removed. */
+export function sweepExpired(now: number = Date.now()): { sessions: number; pending: number } {
+  let removedSessions = 0;
+  for (const [id, session] of sessions) {
+    if (!(now < session.expiresAt)) {
+      sessions.delete(id);
+      removedSessions++;
+    }
+  }
+  let removedPending = 0;
+  for (const [state, entry] of pending) {
+    if (now - entry.createdAt > PENDING_TTL_MS) {
+      pending.delete(state);
+      removedPending++;
+    }
+  }
+  return { sessions: removedSessions, pending: removedPending };
 }

@@ -10,6 +10,7 @@ import {
   createSession,
   destroySession,
   getSession,
+  sweepExpired,
 } from './session.js';
 
 /**
@@ -37,6 +38,9 @@ const oidc: OidcConfig = {
 };
 
 const SESSION_COOKIE = 'sid';
+// Browsers only send a Secure cookie over HTTPS, so set it exactly when the
+// app itself is served over HTTPS (local dev runs on plain http://localhost).
+const COOKIE_SECURE = new URL(config.REDIRECT_URI).protocol === 'https:' ? '; Secure' : '';
 
 function readCookie(req: IncomingMessage, name: string): string | undefined {
   const header = req.headers.cookie;
@@ -127,12 +131,12 @@ async function handleCallback(req: IncomingMessage, res: ServerResponse): Promis
     idClaims,
     expiresAt: Date.now() + tokens.expiresIn * 1000,
   });
-  redirect(res, '/', { 'set-cookie': `${SESSION_COOKIE}=${sid}; HttpOnly; SameSite=Lax; Path=/` });
+  redirect(res, '/', { 'set-cookie': `${SESSION_COOKIE}=${sid}; HttpOnly; SameSite=Lax; Path=/${COOKIE_SECURE}` });
 }
 
 function handleLogout(req: IncomingMessage, res: ServerResponse): void {
   destroySession(readCookie(req, SESSION_COOKIE));
-  redirect(res, '/', { 'set-cookie': `${SESSION_COOKIE}=; Max-Age=0; Path=/` });
+  redirect(res, '/', { 'set-cookie': `${SESSION_COOKIE}=; Max-Age=0; HttpOnly; SameSite=Lax; Path=/${COOKIE_SECURE}` });
 }
 
 function handleHome(req: IncomingMessage, res: ServerResponse): void {
@@ -165,6 +169,25 @@ function handleHome(req: IncomingMessage, res: ServerResponse): void {
   );
 }
 
+/**
+ * One SOAP client for the whole process: the WSDL is downloaded and parsed on
+ * first use, not on every click. A failed load is not cached, so the next call
+ * retries (e.g. if the gateway was started after this app).
+ *
+ * Because the client is shared across users, the bearer token must not be set
+ * with `client.setSecurity()` — that mutates the shared client, and two
+ * concurrent requests could end up sending each other's token. It is passed
+ * per call as an HTTP header instead.
+ */
+let soapClient: Promise<soap.Client> | undefined;
+function getSoapClient(): Promise<soap.Client> {
+  soapClient ??= soap.createClientAsync(config.GATEWAY_WSDL, { endpoint: config.GATEWAY_ENDPOINT }).catch((err: unknown) => {
+    soapClient = undefined;
+    throw err;
+  });
+  return soapClient;
+}
+
 async function handleCall(req: IncomingMessage, res: ServerResponse, kind: 'read' | 'write'): Promise<void> {
   const session = getSession(readCookie(req, SESSION_COOKIE));
   if (!session) {
@@ -187,12 +210,12 @@ async function handleCall(req: IncomingMessage, res: ServerResponse, kind: 'read
     return;
   }
   try {
-    const client = await soap.createClientAsync(config.GATEWAY_WSDL, { endpoint: config.GATEWAY_ENDPOINT });
-    client.setSecurity(new soap.BearerSecurity(session.accessToken));
+    const client = await getSoapClient();
+    const auth = { Authorization: `Bearer ${session.accessToken}` };
     const [result] =
       kind === 'read'
-        ? await client.GetUserDisplayNameAsync({ username })
-        : await client.DeactivateUserAsync({ username });
+        ? await client.GetUserDisplayNameAsync({ username }, {}, auth)
+        : await client.DeactivateUserAsync({ username }, {}, auth);
     html(
       res,
       200,
@@ -241,6 +264,9 @@ const server = createServer((req, res) => {
     }
   });
 });
+
+// unref(): the sweep alone should never keep the process alive.
+setInterval(() => sweepExpired(), 60_000).unref();
 
 server.listen(config.PORT, () => {
   console.log(`web-client listening on http://localhost:${config.PORT}  — start at /login`);

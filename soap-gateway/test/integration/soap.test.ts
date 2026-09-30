@@ -81,6 +81,16 @@ describe('OAuth 2.0 enforcement — HTTP Bearer transport', () => {
     );
   });
 
+  it('rejects an ID token, even one that carries the right aud and scope', async () => {
+    const client = await createClient();
+    client.setSecurity(
+      new soap.BearerSecurity(await idp.issueToken({ scope: 'user.read user.write', asIdToken: true })),
+    );
+    await expect(client.GetUserDisplayNameAsync({ username: 'alice' })).rejects.toThrow(
+      /invalid_token/i,
+    );
+  });
+
   it('accepts a valid user.read token and returns the display name', async () => {
     const client = await createClient();
     client.setSecurity(new soap.BearerSecurity(await idp.issueToken({ scope: 'user.read' })));

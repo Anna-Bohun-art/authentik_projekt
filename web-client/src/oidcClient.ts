@@ -1,4 +1,5 @@
 import { createRemoteJWKSet, jwtVerify, type JWTPayload } from 'jose';
+import { z } from 'zod';
 
 export interface OidcConfig {
   authorizationEndpoint: string;
@@ -31,13 +32,18 @@ export function buildAuthorizationUrl(
   return url.toString();
 }
 
-interface TokenEndpointResponse {
-  access_token: string;
-  id_token?: string;
-  token_type: string;
-  expires_in: number;
-  scope?: string;
-}
+/**
+ * RFC 6749 §5.1. Parsed rather than cast: a missing or non-numeric
+ * `expires_in` would otherwise turn `expiresAt` into NaN, and
+ * `Date.now() >= NaN` is always false — a session that never expires.
+ */
+const TokenEndpointResponse = z.object({
+  access_token: z.string().min(1),
+  id_token: z.string().min(1).optional(),
+  token_type: z.string().refine((t) => t.toLowerCase() === 'bearer', 'expected token_type "Bearer"'),
+  expires_in: z.number().int().positive(),
+  scope: z.string().optional(),
+});
 
 export interface TokenResult {
   accessToken: string;
@@ -74,7 +80,12 @@ export async function exchangeCodeForTokens(
   if (!res.ok) {
     throw new Error(`token exchange failed (${res.status}): ${await res.text()}`);
   }
-  const json = (await res.json()) as TokenEndpointResponse;
+  const parsed = TokenEndpointResponse.safeParse(await res.json());
+  if (!parsed.success) {
+    const details = parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; ');
+    throw new Error(`unexpected token response: ${details}`);
+  }
+  const json = parsed.data;
   return {
     accessToken: json.access_token,
     idToken: json.id_token,
@@ -96,17 +107,29 @@ function jwksFor(jwksUri: string): ReturnType<typeof createRemoteJWKSet> {
 /**
  * Verifies the ID token exactly the way
  * soap-gateway/src/auth/tokens.ts#createTokenVerifier verifies access tokens
- * — signature via JWKS, `iss`, `aud`, `exp` — with one deliberate difference:
- * here `aud` must be *this client's* client_id (OIDC Core §3.1.3.7), because
- * an ID token asserts "this user authenticated, for you, this client" to the
- * client itself. An access token's `aud` instead names the resource server
- * it may be presented to (soap-gateway) — same shape of check, different
- * question being answered.
+ * — signature via JWKS, `iss`, `aud`, `exp`. Here `aud` must be *this
+ * client's* client_id (OIDC Core §3.1.3.7): an ID token tells the client
+ * "this user authenticated, for you".
+ *
+ * In this demo that client_id is `soap-gateway`, the same value the gateway
+ * expects as an access token's `aud`: one authentik provider serves the
+ * machine client, this web client and the gateway, and authentik always sets
+ * an access token's `aud` to the issuing provider's client_id. So `aud` alone
+ * cannot tell the two token types apart. Nor can `scope`: authentik puts the
+ * granted scopes into the ID token too. What keeps an ID token out of the
+ * gateway is that it requires an `azp` claim, which authentik only sets on
+ * access tokens (soap-gateway/src/auth/tokens.ts). A setup with a separate
+ * provider per client would give the ID token its own `aud`, but the gateway
+ * would then have to accept that client_id as an audience too, which closes
+ * nothing.
  */
 export async function verifyIdToken(cfg: OidcConfig, idToken: string): Promise<JWTPayload> {
   const { payload } = await jwtVerify(idToken, jwksFor(cfg.jwksUri), {
     issuer: cfg.issuer,
     audience: cfg.clientId,
+    // authentik signs with the provider's RSA key; pinning the algorithm means
+    // a token can never pick a weaker one via its own header.
+    algorithms: ['RS256'],
     requiredClaims: ['iss', 'aud', 'exp', 'sub'],
   });
   return payload;

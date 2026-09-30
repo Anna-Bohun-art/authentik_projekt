@@ -42,8 +42,16 @@ export function createTokenVerifier(opts: VerifierOptions): TokenVerifier {
         const { payload } = await jwtVerify(token, jwks, {
           issuer: opts.issuer,
           audience: opts.audience,
+          // Pinned to what authentik signs with (the provider's RSA key), so a
+          // token cannot choose a different algorithm through its header.
+          algorithms: ['RS256'],
           clockTolerance: opts.clockToleranceSeconds ?? 5,
-          requiredClaims: ['iss', 'aud', 'exp', 'iat'],
+          // `azp` is what keeps ID tokens out. In this setup the web client's
+          // ID token has the same signing key, iss, aud (soap-gateway) and even
+          // `scope` as an access token; authentik only puts `azp` (and `uid`)
+          // into access tokens. Checked against real tokens from authentik
+          // 2024.8 (docker-compose.yml) — re-check if authentik changes how it builds either.
+          requiredClaims: ['iss', 'aud', 'exp', 'iat', 'azp'],
         });
         return payload as TokenClaims;
       } catch (err) {
